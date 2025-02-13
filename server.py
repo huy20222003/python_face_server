@@ -26,7 +26,7 @@ app.add_middleware(
 # Kết nối MongoDB
 try:
     client = MongoClient(config.MONGO_URI)
-    db = client["iot"]
+    db = client["IoT"]
     faces_collection = db["face_embeddings"]
     logging.info("✅ MongoDB connection successful")
 except Exception as e:
