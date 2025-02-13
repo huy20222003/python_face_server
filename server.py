@@ -25,14 +25,12 @@ async def handle_connection(websocket, path):
         data = json.loads(message)
         image = decode_image(data["image"])
         
-        if data["type"] == "register":
+        if data["type"] == "addFace":
             embedding = get_embedding(image)
             user_id = data.get("userID")
-            name = data.get("name", "Unknown")
 
             if user_id:
                 faces_collection.insert_one({
-                    "name": name,
                     "embeddings": embedding,
                     "userID": user_id
                 })
@@ -40,7 +38,7 @@ async def handle_connection(websocket, path):
             else:
                 await websocket.send(json.dumps({"status": "fail", "message": "Thiếu userID"}))
 
-        elif data["type"] == "recognize":
+        elif data["type"] == "recognizeFace":
             embedding = get_embedding(image)
             user_id = data.get("userID")
 
@@ -58,6 +56,9 @@ async def handle_connection(websocket, path):
                 await websocket.send(json.dumps({"status": "fail", "message": "Thiếu userID"}))
 
 # Khởi động WebSocket server
-start_server = websockets.serve(handle_connection, "0.0.0.0", 5000)
-asyncio.get_event_loop().run_until_complete(start_server)
-asyncio.get_event_loop().run_forever()
+async def main():
+    start_server = await websockets.serve(handle_connection, "0.0.0.0", 5000)
+    await start_server.wait_closed()
+
+asyncio.run(main())  # Chạy server với asyncio.run()
+
