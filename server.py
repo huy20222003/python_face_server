@@ -5,6 +5,7 @@ import base64
 import cv2
 import numpy as np
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from face_recognition import get_embedding, compare_faces
 from pymongo import MongoClient
 import config
@@ -14,6 +15,15 @@ from websockets.exceptions import ConnectionClosed
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 app = FastAPI()
+
+# Cấu hình CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Cho phép tất cả nguồn (có thể đổi sang domain cụ thể)
+    allow_credentials=True,
+    allow_methods=["*"],  # Cho phép tất cả phương thức (GET, POST, OPTIONS, ...)
+    allow_headers=["*"],  # Cho phép tất cả header
+)
 
 # Route kiểm tra trạng thái server
 @app.get("/")
