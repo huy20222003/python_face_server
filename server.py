@@ -1,16 +1,14 @@
 import asyncio
-import websockets
 import json
 import base64
 import cv2
 import numpy as np
-from fastapi import FastAPI
+import logging
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from face_recognition import get_embedding, compare_faces
 from pymongo import MongoClient
 import config
-import logging
-from websockets.exceptions import ConnectionClosed
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -25,6 +23,16 @@ app.add_middleware(
     allow_headers=["*"],  # Cho phép tất cả header
 )
 
+# Kết nối MongoDB
+try:
+    client = MongoClient(config.MONGO_URI)
+    db = client["iot"]
+    faces_collection = db["face_embeddings"]
+    logging.info("✅ MongoDB connection successful")
+except Exception as e:
+    logging.error(f"❌ MongoDB connection error: {e}")
+    raise
+
 # Route kiểm tra trạng thái server
 @app.get("/")
 async def health_check():
@@ -34,118 +42,93 @@ async def health_check():
 async def reject_head():
     return {}
 
-class WebSocketServer:
-    def __init__(self):
-        try:
-            self.client = MongoClient(config.MONGO_URI)
-            self.db = self.client["iot"]
-            self.faces_collection = self.db["face_embeddings"]
-            logging.info("✅ MongoDB connection successful")
-        except Exception as e:
-            logging.error(f"❌ MongoDB connection error: {e}")
-            raise
+# Xử lý WebSocket
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    logging.info(f"🔗 New WebSocket connection from: {websocket.client}")
 
-    async def handle_connection(self, websocket, path):
-        try:
-            logging.info(f"🔗 New WebSocket connection from: {websocket.remote_address}")
-            async for message in websocket:
-                await self.process_message(websocket, message)
-        except ConnectionClosed:
-            logging.info(f"🔌 Connection closed from: {websocket.remote_address}")
-        except Exception as e:
-            logging.error(f"❌ Unexpected error: {e}")
-        finally:
-            logging.info(f"🔌 Connection closed from: {websocket.remote_address}")
-
-    async def process_message(self, websocket, message):
-        try:
+    try:
+        while True:
+            message = await websocket.receive_text()
             data = json.loads(message)
-            if not isinstance(data, dict):
-                raise ValueError("Invalid message format")
 
             image_data = data.get("image")
             if not image_data:
-                raise ValueError("Missing image data")
+                await websocket.send_text(json.dumps({"status": "fail", "message": "Missing image data"}))
+                continue
 
-            image = self.decode_image(image_data)
+            image = decode_image(image_data)
             if image is None:
-                raise ValueError("Invalid image data")
+                await websocket.send_text(json.dumps({"status": "fail", "message": "Invalid image data"}))
+                continue
 
             if data["type"] == "addFace":
-                await self.handle_add_face(websocket, data, image)
+                await handle_add_face(websocket, data, image)
             elif data["type"] == "recognizeFace":
-                await self.handle_recognize_face(websocket, data, image)
+                await handle_recognize_face(websocket, data, image)
             else:
-                raise ValueError("Invalid request type")
-        except (json.JSONDecodeError, ValueError) as e:
-            await websocket.send(json.dumps({"status": "fail", "message": str(e)}))
+                await websocket.send_text(json.dumps({"status": "fail", "message": "Invalid request type"}))
 
-    def decode_image(self, image_data):
-        try:
-            img = base64.b64decode(image_data)
-            np_arr = np.frombuffer(img, np.uint8)
-            return cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        except Exception as e:
-            logging.error(f"❌ Image decoding error: {e}")
-            return None
+    except WebSocketDisconnect:
+        logging.info(f"🔌 Connection closed from: {websocket.client}")
+    except Exception as e:
+        logging.error(f"❌ Unexpected error: {e}")
+    finally:
+        logging.info(f"🔌 Connection closed from: {websocket.client}")
 
-    async def handle_add_face(self, websocket, data, image):
-        try:
-            user_id = data.get("userID")
-            if not user_id:
-                raise ValueError("Missing userID")
+# Hàm giải mã ảnh từ base64
+def decode_image(image_data):
+    try:
+        img = base64.b64decode(image_data)
+        np_arr = np.frombuffer(img, np.uint8)
+        return cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    except Exception as e:
+        logging.error(f"❌ Image decoding error: {e}")
+        return None
 
-            embedding = get_embedding(image)
-            if embedding is None:
-                raise ValueError("Could not generate face embedding")
+# Xử lý đăng ký khuôn mặt
+async def handle_add_face(websocket: WebSocket, data, image):
+    try:
+        user_id = data.get("userID")
+        if not user_id:
+            raise ValueError("Missing userID")
 
-            await self.faces_collection.insert_one({"embeddings": embedding, "userID": user_id})
-            await websocket.send(json.dumps({"status": "success", "message": "Face registration successful"}))
-        except ValueError as e:
-            await websocket.send(json.dumps({"status": "fail", "message": str(e)}))
-        except Exception as e:
-            logging.error(f"❌ Error in handle_add_face: {e}")
-            await websocket.send(json.dumps({"status": "fail", "message": "Face registration failed"}))
+        embedding = get_embedding(image)
+        if embedding is None:
+            raise ValueError("Could not generate face embedding")
 
-    async def handle_recognize_face(self, websocket, data, image):
-        try:
-            user_id = data.get("userID")
-            if not user_id:
-                raise ValueError("Missing userID")
+        await faces_collection.insert_one({"embeddings": embedding, "userID": user_id})
+        await websocket.send_text(json.dumps({"status": "success", "message": "Face registration successful"}))
+    except ValueError as e:
+        await websocket.send_text(json.dumps({"status": "fail", "message": str(e)}))
+    except Exception as e:
+        logging.error(f"❌ Error in handle_add_face: {e}")
+        await websocket.send_text(json.dumps({"status": "fail", "message": "Face registration failed"}))
 
-            embedding = get_embedding(image)
-            if embedding is None:
-                raise ValueError("Could not generate face embedding")
+# Xử lý nhận diện khuôn mặt
+async def handle_recognize_face(websocket: WebSocket, data, image):
+    try:
+        user_id = data.get("userID")
+        if not user_id:
+            raise ValueError("Missing userID")
 
-            match = await self.faces_collection.find_one({"userID": user_id, "embeddings": {"$exists": True}})
-            if match and compare_faces(match["embeddings"], embedding):
-                await websocket.send(json.dumps({"status": "success", "message": f"Face recognition successful: {user_id}"}))
-            else:
-                raise ValueError("Face not recognized")
-        except ValueError as e:
-            await websocket.send(json.dumps({"status": "fail", "message": str(e)}))
-        except Exception as e:
-            logging.error(f"❌ Error in handle_recognize_face: {e}")
-            await websocket.send(json.dumps({"status": "fail", "message": "Face recognition failed"}))
+        embedding = get_embedding(image)
+        if embedding is None:
+            raise ValueError("Could not generate face embedding")
 
-async def websocket_server():
-    server = WebSocketServer()
-    async with websockets.serve(
-        server.handle_connection, 
-        "0.0.0.0", 
-        5000,
-        ping_interval=30,
-        ping_timeout=10,
-        process_request=process_request  # Thêm middleware xử lý CORS
-    ):
-        logging.info("🚀 WebSocket server running on port 5000")
-        await asyncio.Future()
+        match = await faces_collection.find_one({"userID": user_id, "embeddings": {"$exists": True}})
+        if match and compare_faces(match["embeddings"], embedding):
+            await websocket.send_text(json.dumps({"status": "success", "message": f"Face recognition successful: {user_id}"}))
+        else:
+            raise ValueError("Face not recognized")
+    except ValueError as e:
+        await websocket.send_text(json.dumps({"status": "fail", "message": str(e)}))
+    except Exception as e:
+        logging.error(f"❌ Error in handle_recognize_face: {e}")
+        await websocket.send_text(json.dumps({"status": "fail", "message": "Face recognition failed"}))
 
-async def process_request(path, headers):
-    return None  # Cho phép tất cả các kết nối
-
+# Chạy server FastAPI trên cùng cổng 8000
 if __name__ == "__main__":
     import uvicorn
-    loop = asyncio.get_event_loop()
-    loop.create_task(websocket_server())
     uvicorn.run(app, host="0.0.0.0", port=8000)
