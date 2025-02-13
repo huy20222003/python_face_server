@@ -130,9 +130,19 @@ class WebSocketServer:
 
 async def websocket_server():
     server = WebSocketServer()
-    async with websockets.serve(server.handle_connection, "0.0.0.0", 5000, ping_interval=30, ping_timeout=10):
+    async with websockets.serve(
+        server.handle_connection, 
+        "0.0.0.0", 
+        5000,
+        ping_interval=30,
+        ping_timeout=10,
+        process_request=process_request  # Thêm middleware xử lý CORS
+    ):
         logging.info("🚀 WebSocket server running on port 5000")
-        await asyncio.Future()  # Chạy mãi mãi
+        await asyncio.Future()
+
+async def process_request(path, headers):
+    return None  # Cho phép tất cả các kết nối
 
 if __name__ == "__main__":
     import uvicorn
