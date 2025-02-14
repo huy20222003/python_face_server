@@ -6,8 +6,8 @@ import numpy as np
 import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
 from face_recognition import get_embedding, compare_faces
-from pymongo import MongoClient
 import config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -23,9 +23,9 @@ app.add_middleware(
     allow_headers=["*"],  # Cho phép tất cả header
 )
 
-# Kết nối MongoDB
+# Kết nối MongoDB bằng motor
 try:
-    client = MongoClient(config.MONGO_URI)
+    client = AsyncIOMotorClient(config.MONGO_URI)
     db = client["IoT"]
     faces_collection = db["face_embeddings"]
     logging.info("✅ MongoDB connection successful")
@@ -128,7 +128,7 @@ async def handle_recognize_face(websocket: WebSocket, data, image):
         logging.error(f"❌ Error in handle_recognize_face: {e}")
         await websocket.send_text(json.dumps({"status": "fail", "message": "Face recognition failed"}))
 
-# Chạy server FastAPI trên cùng cổng 8000
+# Chạy server FastAPI trên cổng 8000
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
