@@ -94,10 +94,10 @@ async def handle_add_face(websocket: WebSocket, data, image):
         if not user_id:
             raise ValueError("Thiếu userID")
 
-        # Kiểm tra xem userID đã tồn tại chưa
-        existing_user = await faces_collection.find_one({"userID": user_id})
-        if existing_user:
-            raise ValueError("Người dùng này đã đăng ký khuôn mặt trước đó")
+        # # Kiểm tra xem userID đã tồn tại chưa
+        # existing_user = await faces_collection.find_one({"userID": user_id})
+        # if existing_user:
+        #     raise ValueError("Người dùng này đã đăng ký khuôn mặt trước đó")
 
         embedding = get_embedding(image)
         if embedding is None:
