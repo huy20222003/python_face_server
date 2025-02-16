@@ -1,44 +1,64 @@
 import numpy as np
 import logging
-from typing import Optional, List, Union
-import tensorflow as tf
+from typing import Optional, List
 from deepface import DeepFace
-from pathlib import Path
+import cv2
 
 class FaceRecognitionSystem:
-    def __init__(self, model_path: Union[str, Path], threshold: float = 0.5):
+    def __init__(self, model_name: str = "VGG-Face", threshold: float = 0.5):
         """
-        Initialize the face recognition system.
+        Initialize face recognition system using DeepFace's built-in models.
         
         Args:
-            model_path: Path to the FaceNet model weights
-            threshold: Similarity threshold for face comparison
+            model_name: Name of the model to use (default: VGG-Face)
+            threshold: Similarity threshold for face comparison (default: 0.5)
         """
         self.threshold = threshold
-        self.model = None
+        self.model_name = model_name
         self._setup_logging()
-        self._load_model(model_path)
+        self._initialize_model()
     
     def _setup_logging(self) -> None:
-        """Configure logging with appropriate format and level."""
+        """Configure logging system."""
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s - %(levelname)s - %(message)s"
         )
         self.logger = logging.getLogger(__name__)
     
-    def _load_model(self, model_path: Union[str, Path]) -> None:
-        """Load the FaceNet model from the specified path."""
+    def _initialize_model(self) -> None:
+        """Initialize the face recognition model."""
         try:
-            model_path = Path(model_path)
-            if not model_path.exists():
-                raise FileNotFoundError(f"Model file not found at {model_path}")
-            
-            self.model = tf.keras.models.load_model(str(model_path))
-            self.logger.info("✅ FaceNet model loaded successfully")
+            self.logger.info(f"🔄 Initializing {self.model_name} model...")
+            # Verify model availability by attempting to build it
+            DeepFace.build_model(self.model_name)
+            self.logger.info(f"✅ {self.model_name} model initialized successfully")
         except Exception as e:
-            self.logger.error(f"❌ Error loading model: {str(e)}")
+            self.logger.error(f"❌ Error initializing model: {str(e)}")
             raise
+    
+    def _preprocess_image(self, image: np.ndarray) -> Optional[np.ndarray]:
+        """
+        Preprocess the input image for face detection.
+        
+        Args:
+            image: Input image as numpy array
+            
+        Returns:
+            Preprocessed image or None if preprocessing fails
+        """
+        try:
+            # Convert BGR to RGB if necessary
+            if len(image.shape) == 3 and image.shape[2] == 3:
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            
+            # Resize image to a standard size
+            target_size = (224, 224)
+            return cv2.resize(image, target_size)
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error preprocessing image: {str(e)}")
+            return None
     
     def get_embedding(self, image: np.ndarray) -> Optional[List[float]]:
         """
@@ -48,23 +68,28 @@ class FaceRecognitionSystem:
             image: Input image as numpy array
             
         Returns:
-            Face embedding vector if successful, None otherwise
+            List of embedding values or None if face detection fails
         """
         try:
-            if self.model is None:
-                self.logger.error("❌ Model not available")
+            preprocessed_image = self._preprocess_image(image)
+            if preprocessed_image is None:
                 return None
             
-            result = DeepFace.represent(
-                image,
-                model=self.model,
-                enforce_detection=False
+            # Generate embedding using DeepFace
+            embedding = DeepFace.represent(
+                img_path=preprocessed_image,
+                model_name=self.model_name,
+                enforce_detection=False,
+                detector_backend='opencv'
             )
             
-            if result and isinstance(result, list) and "embedding" in result[0]:
-                return result[0]["embedding"]
-            
-            self.logger.error("❌ No embedding found in DeepFace result")
+            if isinstance(embedding, list) and len(embedding) > 0:
+                # Extract the embedding vector from the result
+                if isinstance(embedding[0], dict) and 'embedding' in embedding[0]:
+                    return embedding[0]['embedding']
+                return embedding[0]
+                
+            self.logger.error("❌ Failed to generate embedding")
             return None
             
         except Exception as e:
@@ -75,43 +100,32 @@ class FaceRecognitionSystem:
                      embedding1: Optional[List[float]], 
                      embedding2: Optional[List[float]]) -> bool:
         """
-        Compare two face embeddings.
+        Compare two face embeddings using cosine similarity.
         
         Args:
             embedding1: First face embedding
             embedding2: Second face embedding
             
         Returns:
-            True if faces match according to threshold, False otherwise
+            Boolean indicating whether faces match
         """
         try:
             if embedding1 is None or embedding2 is None:
                 self.logger.warning("⚠️ One or both embeddings are None")
                 return False
-                
-            distance = np.linalg.norm(
-                np.array(embedding1) - np.array(embedding2)
-            )
-            self.logger.debug(f"Distance between embeddings: {distance:.4f}")
             
-            return distance < self.threshold
+            # Convert lists to numpy arrays if necessary
+            emb1 = np.array(embedding1)
+            emb2 = np.array(embedding2)
+                
+            # Calculate cosine similarity
+            similarity = np.dot(emb1, emb2) / (
+                np.linalg.norm(emb1) * np.linalg.norm(emb2)
+            )
+            
+            self.logger.debug(f"Face similarity score: {similarity:.4f}")
+            return similarity > self.threshold
             
         except Exception as e:
             self.logger.error(f"❌ Error comparing faces: {str(e)}")
             return False
-
-# Usage example
-if __name__ == "__main__":
-    MODEL_PATH = Path("models") / "facenet_weights.h5"
-    
-    try:
-        # Initialize the system
-        face_system = FaceRecognitionSystem(MODEL_PATH)
-        
-        # Example usage (assuming you have image1 and image2)
-        # embedding1 = face_system.get_embedding(image1)
-        # embedding2 = face_system.get_embedding(image2)
-        # match = face_system.compare_faces(embedding1, embedding2)
-        
-    except Exception as e:
-        logging.error(f"System initialization failed: {str(e)}")

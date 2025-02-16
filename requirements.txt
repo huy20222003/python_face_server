@@ -9,3 +9,5 @@ fastapi
 uvicorn
 motor
 tensorflow
+tensorflow_hub
+opencv-python
