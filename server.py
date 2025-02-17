@@ -56,6 +56,11 @@ except Exception as e:
     logger.error(f"❌ Lỗi kết nối MongoDB: {e}")
     raise
 
+#Route kiểm tra trạng thái server
+@app.head("/")
+async def reject_head():
+    return {}
+
 @app.get("/health")
 async def health_check():
     """Kiểm tra trạng thái hoạt động của hệ thống."""
