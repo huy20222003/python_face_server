@@ -61,6 +61,10 @@ except Exception as e:
 async def reject_head():
     return {}
 
+@app.get("/")
+async def root():
+    return {"message": "Welcome to the Face Recognition API!"}
+
 @app.get("/health")
 async def health_check():
     """Kiểm tra trạng thái hoạt động của hệ thống."""
