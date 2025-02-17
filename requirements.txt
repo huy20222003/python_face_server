@@ -1,6 +1,6 @@
 websockets
 numpy
-opencv-python
+opencv-python-headless
 deepface
 tensorflow-cpu
 fastapi
