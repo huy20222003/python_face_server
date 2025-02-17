@@ -32,14 +32,19 @@ class FaceRecognitionSystem:
         """Tải mô hình từ Google Drive nếu chưa có."""
         if not os.path.exists(self.model_path):
             os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
-            self.logger.info(f"📥 Đang tải mô hình từ Google Drive...")
+            self.logger.info("📥 Đang tải mô hình từ Google Drive (đồng bộ)...")
             try:
-                gdown.download(self.model_url, self.model_path, quiet=False)
-                self.logger.info(f"✅ Model đã tải thành công!")
+                # Sử dụng fuzzy=True để xử lý link chia sẻ của Google Drive
+                gdown.download(url=self.model_url, output=self.model_path, quiet=False, fuzzy=True)
+                self.logger.info("✅ Model đã tải thành công!")
+                
+                # (Tùy chọn) Kiểm tra kích thước file hoặc trạng thái file sau khi tải về
+                if os.path.getsize(self.model_path) < 100 * 1024 * 1024:
+                    self.logger.warning("⚠️ Kích thước file tải về có vẻ không đúng, vui lòng kiểm tra lại.")
             except Exception as e:
                 self.logger.error(f"❌ Lỗi tải model: {e}")
                 raise
-    
+
     def _load_model(self) -> None:
         """Load mô hình từ file, nếu chưa có thì tải trước rồi load."""
         if self.model is None:
@@ -49,6 +54,10 @@ class FaceRecognitionSystem:
                     self._download_model()
                 
                 self.logger.info(f"🔄 Đang tải mô hình từ {self.model_path}...")
+                # Chờ một chút nếu cần thiết để đảm bảo file đã hoàn toàn ghi xong (trường hợp hệ thống file chậm)
+                while not os.path.exists(self.model_path):
+                    pass
+
                 self.model = tf.keras.models.load_model(self.model_path)
                 self.logger.info(f"✅ Mô hình {self.model_name} đã tải xong")
             except Exception as e:
