@@ -26,9 +26,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Khởi tạo hệ thống nhận diện khuôn mặt với model Facenet
+# Khởi tạo hệ thống nhận diện khuôn mặt với model ArcFace
 try:
-    face_system = FaceRecognitionSystem(model_name="Facenet", threshold=0.6)
+    face_system = FaceRecognitionSystem(model_name="ArcFace", threshold=0.6)
     logger.info("✅ Khởi tạo hệ thống nhận diện khuôn mặt thành công")
 except Exception as e:
     logger.error(f"❌ Lỗi khởi tạo hệ thống nhận diện khuôn mặt: {e}")

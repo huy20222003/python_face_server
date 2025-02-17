@@ -5,12 +5,12 @@ from deepface import DeepFace
 import cv2
 
 class FaceRecognitionSystem:
-    def __init__(self, model_name: str = "Facenet", threshold: float = 0.5):
+    def __init__(self, model_name: str = "ArcFace", threshold: float = 0.5):
         """
         Initialize face recognition system using DeepFace's built-in models.
         
         Args:
-            model_name: Name of the model to use (default: Facenet)
+            model_name: Name of the model to use (default: ArcFace)
             threshold: Similarity threshold for face comparison (default: 0.5)
         """
         self.threshold = threshold
