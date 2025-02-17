@@ -1,19 +1,23 @@
 import numpy as np
 import logging
-from typing import Optional, List
+import os
+import tensorflow as tf
+from typing import Optional
 from deepface import DeepFace
 import cv2
 
 class FaceRecognitionSystem:
-    def __init__(self, model_name: str = "ArcFace", threshold: float = 0.5):
+    def __init__(self, model_name: str = "ArcFace", threshold: float = 0.5, model_path: str = "models/arcface_weights.h5"):
         """
         Khởi tạo hệ thống nhận diện khuôn mặt
         Args:
             model_name: Tên mô hình (mặc định: ArcFace)
             threshold: Ngưỡng nhận diện (mặc định: 0.5)
+            model_path: Đường dẫn đến mô hình đã lưu
         """
         self.threshold = threshold
         self.model_name = model_name
+        self.model_path = model_path
         self.model = None  # Lazy Loading
         self._setup_logging()
     
@@ -23,12 +27,18 @@ class FaceRecognitionSystem:
         self.logger = logging.getLogger(__name__)
     
     def _load_model(self) -> None:
-        """Tải model chỉ khi cần thiết (Lazy Loading)."""
+        """Load mô hình từ file nếu có, nếu không thì tải từ DeepFace và lưu lại."""
         if self.model is None:
             try:
-                self.logger.info(f"🔄 Đang tải mô hình {self.model_name}...")
-                self.model = DeepFace.build_model(self.model_name)
-                self.logger.info(f"✅ {self.model_name} đã được tải thành công")
+                if os.path.exists(self.model_path):
+                    self.logger.info(f"🔄 Đang tải mô hình từ {self.model_path}...")
+                    self.model = tf.keras.models.load_model(self.model_path)
+                else:
+                    self.logger.info(f"⚠️ Không tìm thấy {self.model_path}, đang tải từ DeepFace...")
+                    self.model = DeepFace.build_model(self.model_name)
+                    os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+                    self.model.save(self.model_path)  # Lưu lại để lần sau dùng
+                self.logger.info(f"✅ Mô hình {self.model_name} đã tải xong")
             except Exception as e:
                 self.logger.error(f"❌ Lỗi tải mô hình: {e}")
                 raise
