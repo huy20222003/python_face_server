@@ -38,27 +38,41 @@ class FaceRecognitionSystem:
         preprocessed_image = self._preprocess_image(image)
         if preprocessed_image is None:
             return None
+        
+        temp_path = 'temp_face.jpg'
         try:
-            # Save the preprocessed image temporarily if it's an array
-            temp_path = 'temp_face.jpg'
+            # Save the preprocessed image temporarily
             cv2.imwrite(temp_path, preprocessed_image)
             
-            # DeepFace now handles model loading within represent call
-            embedding = DeepFace.represent(
-                img_path=temp_path,
-                model_name=self.model_name,
-                enforce_detection=False,
-                detector_backend='opencv'
-            )
+            try:
+                embedding = DeepFace.represent(
+                    img_path=temp_path,
+                    model_name=self.model_name,
+                    enforce_detection=False,
+                    detector_backend='opencv'
+                )
+                return np.array(embedding[0]['embedding']) if embedding else None
             
-            # Clean up
+            except ValueError as ve:
+                if "Invalid model_name" in str(ve):
+                    self.logger.error(f"❌ Model name '{self.model_name}' không hợp lệ. Hãy sử dụng tên mô hình khả dụng như 'Facenet', 'VGG-Face', v.v.")
+                    # Fallback to default model if possible
+                    if self.model_name != "Facenet":
+                        self.logger.info("🔄 Thử lại với mô hình mặc định 'Facenet'")
+                        self.model_name = "Facenet"
+                        return self.get_embedding(image)
+                else:
+                    self.logger.error(f"❌ Lỗi giá trị: {ve}")
+                return None
+            
+            except Exception as e:
+                self.logger.error(f"❌ Lỗi trích xuất embedding: {e}")
+                return None
+            
+        finally:
+            # Clean up regardless of success or failure
             if os.path.exists(temp_path):
                 os.remove(temp_path)
-                
-            return np.array(embedding[0]['embedding']) if embedding else None
-        except Exception as e:
-            self.logger.error(f"❌ Lỗi trích xuất embedding: {e}")
-            return None
     
     def compare_faces(self, embedding1: Optional[np.ndarray], embedding2: Optional[np.ndarray]) -> bool:
         """So sánh hai embeddings để xác thực khuôn mặt."""
