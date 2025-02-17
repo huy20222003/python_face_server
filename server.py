@@ -48,7 +48,7 @@ def get_face_system():
     global face_system
     if face_system is None:
         logger.info("🟢 Khởi tạo hệ thống nhận diện khuôn mặt...")
-        face_system = FaceRecognitionSystem(model_name="FaceNet", threshold=0.6, model_path="models/facenet_keras.h5")
+        face_system = FaceRecognitionSystem(model_name="FaceNet", threshold=0.6)
         logger.info("✅ Hệ thống nhận diện khuôn mặt đã sẵn sàng")
     return face_system
 
