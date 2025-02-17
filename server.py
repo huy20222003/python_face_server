@@ -120,13 +120,13 @@ async def handle_add_face(websocket: WebSocket, data: dict, image: np.ndarray):
 
         await faces_collection.insert_one(face_document)
         
-        await websocket.send_text(json.dumps({"status": "success", "message": "Đăng ký khuôn mặt thành công", "timestamp": datetime.now(timezone.utc).isoformat()}))
+        await websocket.send_text(json.dumps({ "type": "addFace", "status": "success", "message": "Đăng ký khuôn mặt thành công", "messageFlow": "response" }))
 
     except ValueError as e:
-        await websocket.send_text(json.dumps({"status": "fail", "message": str(e)}))
+        await websocket.send_text(json.dumps({"type": "addFace", "status": "fail", "message": str(e), "messageFlow": "response"}))
     except Exception as e:
         logger.error(f"❌ Lỗi đăng ký khuôn mặt: {e}")
-        await websocket.send_text(json.dumps({"status": "fail", "message": "Đăng ký khuôn mặt thất bại"}))
+        await websocket.send_text(json.dumps({"type": "addFace", "status": "fail", "message": "Đăng ký khuôn mặt thất bại", "messageFlow": "response"}))
     finally:
         gc.collect()
         
@@ -156,26 +156,29 @@ async def handle_recognize_face(websocket: WebSocket, data: dict, image: np.ndar
 
         if recognized_user:
             response = {
+                "type": "recognizeFace",
                 "status": "success",
                 "message": "Nhận diện thành công",
                 "userID": recognized_user,
                 "distance": min_distance,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "messageFlow": "response",
             }
         else:
             response = {
+                "type": "recognizeFace", 
                 "status": "fail",
                 "message": "Khuôn mặt chưa được đăng ký",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
+                "messageFlow": "response"
             }
 
         await websocket.send_text(json.dumps(response))
 
     except ValueError as e:
-        await websocket.send_text(json.dumps({"status": "fail", "message": str(e)}))
+        await websocket.send_text(json.dumps({"type": "recognizeFace", "status": "fail", "message": str(e), "messageFlow": "response"}))
     except Exception as e:
         logger.error(f"❌ Lỗi nhận diện khuôn mặt: {e}")
-        await websocket.send_text(json.dumps({"status": "fail", "message": "Nhận diện khuôn mặt thất bại"}))
+        await websocket.send_text(json.dumps({"type": "recognizeFace", "status": "fail", "message": "Nhận diện khuôn mặt thất bại", "messageFlow": "response"}))
     finally:
         gc.collect()
 
