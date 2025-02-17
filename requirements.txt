@@ -2,12 +2,8 @@ websockets
 numpy
 opencv-python
 deepface
-pymongo
-tf-keras
-tensorflow-cpu==2.14.0
+tensorflow-cpu
 fastapi
 uvicorn
 motor
-tensorflow
 tensorflow_hub
-opencv-python
