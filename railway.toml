@@ -3,7 +3,7 @@ builder = "NIXPACKS"
 buildCommand = "pip install -r requirements.txt"
 
 [env]
-NIXPACKS_APT_INSTALL = "libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev"
+NIXPACKS_APT_INSTALL = "libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev mesa-utils"
 
 [start]
 cmd = "python server.py"
