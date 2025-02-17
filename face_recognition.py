@@ -5,6 +5,7 @@ import tensorflow as tf
 from typing import Optional
 from deepface import DeepFace
 import cv2
+import gdown  # Thêm thư viện để tải file từ Google Drive
 
 class FaceRecognitionSystem:
     def __init__(self, model_name: str = "ArcFace", threshold: float = 0.5, model_path: str = "models/arcface_weights.h5"):
@@ -18,6 +19,7 @@ class FaceRecognitionSystem:
         self.threshold = threshold
         self.model_name = model_name
         self.model_path = model_path
+        self.model_url = "https://drive.google.com/file/d/1rxn3slXispD43WVqQsduPKqymb4QXf9f/view?usp=sharing"  # Cập nhật Google Drive ID
         self.model = None  # Lazy Loading
         self._setup_logging()
     
@@ -25,19 +27,29 @@ class FaceRecognitionSystem:
         """Cấu hình logging."""
         logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
         self.logger = logging.getLogger(__name__)
+
+    def _download_model(self) -> None:
+        """Tải mô hình từ Google Drive nếu chưa có."""
+        if not os.path.exists(self.model_path):
+            os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+            self.logger.info(f"📥 Đang tải mô hình từ Google Drive...")
+            try:
+                gdown.download(self.model_url, self.model_path, quiet=False)
+                self.logger.info(f"✅ Model đã tải thành công!")
+            except Exception as e:
+                self.logger.error(f"❌ Lỗi tải model: {e}")
+                raise
     
     def _load_model(self) -> None:
-        """Load mô hình từ file nếu có, nếu không thì tải từ DeepFace và lưu lại."""
+        """Load mô hình từ file, nếu chưa có thì tải trước rồi load."""
         if self.model is None:
             try:
-                if os.path.exists(self.model_path):
-                    self.logger.info(f"🔄 Đang tải mô hình từ {self.model_path}...")
-                    self.model = tf.keras.models.load_model(self.model_path)
-                else:
-                    self.logger.info(f"⚠️ Không tìm thấy {self.model_path}, đang tải từ DeepFace...")
-                    self.model = DeepFace.build_model(self.model_name)
-                    os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
-                    self.model.save(self.model_path)  # Lưu lại để lần sau dùng
+                if not os.path.exists(self.model_path):
+                    self.logger.info(f"⚠️ Không tìm thấy {self.model_path}, đang tải model...")
+                    self._download_model()
+                
+                self.logger.info(f"🔄 Đang tải mô hình từ {self.model_path}...")
+                self.model = tf.keras.models.load_model(self.model_path)
                 self.logger.info(f"✅ Mô hình {self.model_name} đã tải xong")
             except Exception as e:
                 self.logger.error(f"❌ Lỗi tải mô hình: {e}")
