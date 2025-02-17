@@ -16,7 +16,9 @@ from face_recognition import FaceRecognitionSystem
 # Tắt log không cần thiết của TensorFlow
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
-tf.config.experimental.set_memory_growth(tf.config.list_physical_devices('CPU')[0], True)
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    tf.config.experimental.set_memory_growth(gpus[0], True)
 
 # Thiết lập logging
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(message)s")
