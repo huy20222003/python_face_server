@@ -8,18 +8,18 @@ import cv2
 import gdown  # Thêm thư viện để tải file từ Google Drive
 
 class FaceRecognitionSystem:
-    def __init__(self, model_name: str = "ArcFace", threshold: float = 0.5, model_path: str = "models/arcface_weights.h5"):
+    def __init__(self, model_name: str = "FaceNet", threshold: float = 0.5, model_path: str = "models/facenet_keras.h5"):
         """
         Khởi tạo hệ thống nhận diện khuôn mặt
         Args:
-            model_name: Tên mô hình (mặc định: ArcFace)
+            model_name: Tên mô hình (mặc định: FaceNet)
             threshold: Ngưỡng nhận diện (mặc định: 0.5)
             model_path: Đường dẫn đến mô hình đã lưu
         """
         self.threshold = threshold
         self.model_name = model_name
         self.model_path = model_path
-        self.model_url = "https://drive.google.com/file/d/1rxn3slXispD43WVqQsduPKqymb4QXf9f/view?usp=sharing"  # Cập nhật Google Drive ID
+        self.model_url = "https://drive.google.com/file/d/1PZ_6Zsy1Vb0s0JmjEmVd8FS99zoMCiN1/view?usp=sharing"  # Cập nhật Google Drive ID
         self.model = None  # Lazy Loading
         self._setup_logging()
     
