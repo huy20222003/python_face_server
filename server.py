@@ -7,6 +7,7 @@ import gc
 from datetime import datetime, timezone
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import config
 import tensorflow as tf
@@ -26,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 # Khởi tạo ứng dụng FastAPI
 app = FastAPI(title="Face Recognition API")
+
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
 
 # Cấu hình CORS
 app.add_middleware(
