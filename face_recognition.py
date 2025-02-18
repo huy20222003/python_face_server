@@ -2,44 +2,38 @@ import numpy as np
 import logging
 import os
 import tensorflow as tf
-from typing import Optional, Dict, Any
-from deepface import DeepFace
+from typing import Optional
 import cv2
+from deepface.DeepFace import build_model
 
 class FaceRecognitionSystem:
-    def __init__(self, model_name: str = "Facenet", threshold: float = 0.5):
+    def __init__(self, model_path: str = "models/facenet_model.h5", threshold: float = 0.5):
         """
-        Khởi tạo hệ thống nhận diện khuôn mặt
+        Khởi tạo hệ thống nhận diện khuôn mặt.
         Args:
-            model_name: Tên mô hình (mặc định: Facenet)
-            threshold: Ngưỡng nhận diện (mặc định: 0.5)
+            model_path: Đường dẫn lưu mô hình cục bộ.
+            threshold: Ngưỡng nhận diện.
         """
         self.threshold = threshold
-        self.model_name = model_name
+        self.model_path = model_path
         self._setup_logging()
         self._load_model()
-        
+
     def _setup_logging(self) -> None:
         """Cấu hình logging."""
         logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
         self.logger = logging.getLogger(__name__)
-        
+
     def _load_model(self) -> None:
-        """Tải mô hình DeepFace một lần duy nhất."""
+        """Tải mô hình Facenet một lần duy nhất."""
+        if not os.path.exists(self.model_path):
+            self.logger.error(f"❌ Không tìm thấy mô hình tại {self.model_path}. Vui lòng tải mô hình trước khi deploy.")
+            raise FileNotFoundError("Mô hình không tồn tại!")
         try:
-            self.logger.info(f"🔄 Đang tải mô hình {self.model_name}...")
-            from deepface.commons import functions
-            # Lưu trữ thông tin cấu hình mô hình để sử dụng lại
-            self.model_obj = DeepFace.build_model(self.model_name)
-            self.logger.info(f"✅ Đã tải mô hình {self.model_name} thành công")
-        except ValueError as ve:
-            if "Invalid model_name" in str(ve):
-                self.logger.error(f"❌ Model name '{self.model_name}' không hợp lệ. Sử dụng Facenet thay thế.")
-                self.model_name = "Facenet"
-                self._load_model()
-            else:
-                self.logger.error(f"❌ Lỗi tải mô hình: {ve}")
-                raise
+            self.logger.info("🔄 Đang tải mô hình vào bộ nhớ...")
+            self.model = build_model("Facenet")
+            self.model.load_weights(self.model_path)
+            self.logger.info("✅ Mô hình đã được tải thành công.")
         except Exception as e:
             self.logger.error(f"❌ Lỗi tải mô hình: {e}")
             raise
@@ -59,29 +53,16 @@ class FaceRecognitionSystem:
         preprocessed_image = self._preprocess_image(image)
         if preprocessed_image is None:
             return None
-        
+
         temp_path = 'temp_face.jpg'
         try:
-            # Lưu ảnh đã xử lý tạm thời
             cv2.imwrite(temp_path, preprocessed_image)
-            
-            try:
-                # Sử dụng mô hình đã tải sẵn
-                embedding = DeepFace.represent(
-                    img_path=temp_path,
-                    model_name=self.model_name,
-                    model=self.model_obj,  # Truyền mô hình đã tải
-                    enforce_detection=False,
-                    detector_backend='opencv'
-                )
-                return np.array(embedding[0]['embedding']) if embedding else None
-            
-            except Exception as e:
-                self.logger.error(f"❌ Lỗi trích xuất embedding: {e}")
-                return None
-            
+            embedding = build_model("Facenet").predict(np.expand_dims(preprocessed_image, axis=0))[0]
+            return embedding
+        except Exception as e:
+            self.logger.error(f"❌ Lỗi trích xuất embedding: {e}")
+            return None
         finally:
-            # Dọn dẹp dù thành công hay thất bại
             if os.path.exists(temp_path):
                 os.remove(temp_path)
     

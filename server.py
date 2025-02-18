@@ -48,7 +48,7 @@ def get_face_system():
     global face_system
     if face_system is None:
         logger.info("🟢 Khởi tạo hệ thống nhận diện khuôn mặt...")
-        face_system = FaceRecognitionSystem(model_name="Facenet", threshold=0.6)
+        face_system = FaceRecognitionSystem(model_path="models/facenet_model.h5", threshold=0.6)
         logger.info("✅ Hệ thống nhận diện khuôn mặt đã sẵn sàng")
     return face_system
 
@@ -102,11 +102,6 @@ def decode_image(image_data: str) -> np.ndarray:
         logger.error(f"❌ Lỗi giải mã ảnh: {e}")
         return None
 
-# def preprocess_image(image: np.ndarray) -> np.ndarray:
-#     """Resize ảnh về kích thước nhỏ hơn để giảm tải xử lý"""
-#     target_size = (160, 160)
-#     return cv2.resize(image, target_size)
-
 async def handle_add_face(websocket: WebSocket, data: dict, image: np.ndarray):
     """Xử lý yêu cầu đăng ký khuôn mặt."""
     try:
@@ -118,7 +113,6 @@ async def handle_add_face(websocket: WebSocket, data: dict, image: np.ndarray):
         if existing_face:
             raise ValueError("UserID đã được đăng ký")
 
-        # image = preprocess_image(image)
         embedding = get_face_system().get_embedding(image)
         if embedding is None:
             raise ValueError("Không thể tạo embedding từ khuôn mặt")
@@ -138,7 +132,6 @@ async def handle_recognize_face(websocket: WebSocket, data: dict, image: np.ndar
     """Xử lý yêu cầu nhận dạng khuôn mặt."""
     try:
         logger.info("🔍 Bắt đầu nhận diện khuôn mặt...")
-        # image = preprocess_image(image)
         embedding = get_face_system().get_embedding(image)
         if embedding is None:
             raise ValueError("Không thể tạo embedding từ khuôn mặt")
