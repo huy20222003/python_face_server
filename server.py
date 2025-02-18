@@ -16,6 +16,8 @@ from face_recognition import FaceRecognitionSystem
 # Tắt log không cần thiết của TensorFlow
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"  # Tắt tối ưu hóa CPU
+os.environ["TF_LITE_DISABLE_XNNPACK"] = "1"  # Vô hiệu hóa XNNPACK
 
 gpus = tf.config.list_physical_devices('GPU')
 if gpus:
@@ -48,7 +50,7 @@ def get_face_system():
     global face_system
     if face_system is None:
         logger.info("🟢 Khởi tạo hệ thống nhận diện khuôn mặt...")
-        face_system = FaceRecognitionSystem(model_path="models/arcface_weights.tflite", threshold=0.6)
+        face_system = FaceRecognitionSystem(model_path="models/arcface_model.tflite", threshold=0.6)
         logger.info("✅ Hệ thống nhận diện khuôn mặt đã sẵn sàng")
     return face_system
 
