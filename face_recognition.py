@@ -42,12 +42,12 @@ class FaceRecognitionSystem:
     def _preprocess_image(self, image: np.ndarray) -> Optional[np.ndarray]:
         """Tiền xử lý ảnh đầu vào:
            - Nếu ảnh có 3 kênh (BGR) chuyển sang RGB.
-           - Resize ảnh về kích thước (160, 160).
+           - Resize ảnh về kích thước (112, 112).
         """
         try:
             if image.shape[2] == 3:
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            return cv2.resize(image, (160, 160))
+            return cv2.resize(image, (112, 112))
         except Exception as e:
             self.logger.error(f"❌ Lỗi xử lý ảnh: {e}")
             return None
