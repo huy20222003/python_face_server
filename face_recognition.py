@@ -24,36 +24,28 @@ class FaceRecognitionSystem:
         self._load_model()
         self.face_detector = mp.solutions.face_detection.FaceDetection(min_detection_confidence=0.5)
         
-    def _detect_face(self, image: np.ndarray) -> Optional[np.ndarray]:
+    def _detect_faces(self, image: np.ndarray) -> list:
         """
-        Phát hiện khuôn mặt trong ảnh và trả về vùng chứa khuôn mặt lớn nhất.
+        Phát hiện tất cả các khuôn mặt trong ảnh và trả về danh sách các vùng chứa khuôn mặt.
+        Mỗi khuôn mặt được cắt ra dưới dạng một numpy array.
         """
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         results = self.face_detector.process(image_rgb)
-
+        faces = []
+        
         if results.detections:
             h, w, _ = image.shape
-            max_area = 0
-            best_face = None
-
             for detection in results.detections:
                 bbox = detection.location_data.relative_bounding_box
-                x, y, width, height = (
-                    int(bbox.xmin * w), int(bbox.ymin * h),
-                    int(bbox.width * w), int(bbox.height * h)
-                )
-
-                if width * height > max_area:
-                    max_area = width * height
-                    best_face = (x, y, width, height)
-
-            if best_face:
-                x, y, width, height = best_face
-                x, y = max(0, x), max(0, y)  # Đảm bảo không bị lỗi cắt ảnh
-                return image[y:y + height, x:x + width]
-
-        return None
-
+                x = int(bbox.xmin * w)
+                y = int(bbox.ymin * h)
+                width = int(bbox.width * w)
+                height = int(bbox.height * h)
+                # Đảm bảo tọa độ không vượt ngoài biên ảnh
+                x, y = max(0, x), max(0, y)
+                face_img = image[y:y + height, x:x + width]
+                faces.append(face_img)
+        return faces
 
     def _setup_logging(self) -> None:
         """Cấu hình logging."""
@@ -91,27 +83,36 @@ class FaceRecognitionSystem:
             self.logger.error(f"❌ Lỗi xử lý ảnh: {e}")
             return None
 
-    def get_embedding(self, image: np.ndarray) -> Optional[np.ndarray]:
+    def get_embeddings(self, image: np.ndarray) -> Optional[list]:
         """
-        Trích xuất embedding từ khuôn mặt sử dụng mô hình TF Lite.
+        Trích xuất embedding từ tất cả các khuôn mặt được phát hiện trong ảnh.
+        Trả về danh sách các embedding đã được chuẩn hóa.
+        Nếu không phát hiện được khuôn mặt nào, trả về None.
         """
-        face_image = self._detect_face(image)
-        if face_image is None:
-            self.logger.warning("⚠️ Không tìm thấy khuôn mặt trong ảnh.")
+        face_images = self._detect_faces(image)
+        if not face_images:
+            self.logger.warning("⚠️ Không tìm thấy khuôn mặt nào trong ảnh.")
             return None
 
-        preprocessed_image = self._preprocess_image(face_image)
-        if preprocessed_image is None:
-            return None
+        embeddings = []
+        for face_image in face_images:
+            preprocessed_image = self._preprocess_image(face_image)
+            if preprocessed_image is None:
+                continue
+            try:
+                self.interpreter.set_tensor(self.input_details[0]['index'], preprocessed_image)
+                self.interpreter.invoke()
+                embedding = self.interpreter.get_tensor(self.output_details[0]['index'])[0]
+                # Chuẩn hóa embedding và thêm vào danh sách
+                normalized_embedding = embedding / np.linalg.norm(embedding)
+                embeddings.append(normalized_embedding)
+            except Exception as e:
+                self.logger.error(f"❌ Lỗi trích xuất embedding: {e}")
+                continue
 
-        try:
-            self.interpreter.set_tensor(self.input_details[0]['index'], preprocessed_image)
-            self.interpreter.invoke()
-            embedding = self.interpreter.get_tensor(self.output_details[0]['index'])[0]
-            return embedding / np.linalg.norm(embedding)  # Chuẩn hóa embedding
-        except Exception as e:
-            self.logger.error(f"❌ Lỗi trích xuất embedding: {e}")
+        if not embeddings:
             return None
+        return embeddings
 
     def compare_faces(self, embedding1: Optional[np.ndarray], embedding2: Optional[np.ndarray]) -> bool:
         """So sánh hai embeddings để xác thực khuôn mặt."""

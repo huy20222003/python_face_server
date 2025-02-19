@@ -105,67 +105,105 @@ def decode_image(image_data: str) -> np.ndarray:
         return None
 
 async def handle_add_face(websocket: WebSocket, data: dict, image: np.ndarray):
-    """Xử lý yêu cầu đăng ký khuôn mặt."""
+    """
+    Xử lý yêu cầu đăng ký khuôn mặt:
+    - Mỗi khuôn mặt đăng ký sẽ tạo 1 document mới với trường 'userID', 'name' (mặc định "unknown"),
+      'embedding' và 'created_at'
+    """
     try:
         user_id = data.get("userID")
         if not user_id:
             raise ValueError("Thiếu userID")
-        logger.info(f"👤 Đăng ký khuôn mặt mới cho userID: {user_id}")
-        existing_face = await faces_collection.find_one({"userID": user_id})
-        if existing_face:
-            raise ValueError("UserID đã được đăng ký")
 
-        embedding = get_face_system().get_embedding(image)
-        if embedding is None:
+        logger.info(f"👤 Đăng ký khuôn mặt mới cho userID: {user_id}")
+
+        # Lấy danh sách các embedding từ ảnh
+        embeddings = get_face_system().get_embeddings(image)
+        if embeddings is None or len(embeddings) == 0:
             raise ValueError("Không thể tạo embedding từ khuôn mặt")
-        face_document = {"userID": user_id, "embeddings": embedding.tolist(), "created_at": datetime.now(timezone.utc)}
-        await faces_collection.insert_one(face_document)
+
+        # Với mỗi embedding được phát hiện, tạo một document riêng
+        for emb in embeddings:
+            face_document = {
+                "userID": user_id,
+                "name": "unknown",
+                "embedding": emb.tolist(),  # Chuyển numpy array thành list
+                "createdAt": datetime.now(timezone.utc),
+                "updatedAt": datetime.now(timezone.utc)
+            }
+            await faces_collection.insert_one(face_document)
+
         logger.info("✅ Đăng ký khuôn mặt thành công")
         await websocket.send_text(json.dumps({"type": "addFace", "status": "success"}, ensure_ascii=False))
+    
     except ValueError as e:
         await websocket.send_text(json.dumps({"type": "addFace", "status": "fail", "message": str(e)}, ensure_ascii=False))
     except Exception as e:
         logger.error(f"❌ Lỗi đăng ký khuôn mặt: {e}")
-        await websocket.send_text(json.dumps({"type": "addFace", "status": "fail", "message": "Đăng ký khuôn mặt thất bại", "messageFlow": "response"}, ensure_ascii=False))
+        await websocket.send_text(json.dumps({"type": "addFace", "status": "fail", "message": "Đăng ký khuôn mặt thất bại"}, ensure_ascii=False))
     finally:
         gc.collect()
 
 async def handle_recognize_face(websocket: WebSocket, data: dict, image: np.ndarray):
-    """Xử lý yêu cầu nhận dạng khuôn mặt."""
+    """
+    Xử lý yêu cầu nhận diện khuôn mặt:
+    - Phát hiện nhiều khuôn mặt trong 1 bức ảnh (giả sử FaceRecognitionSystem có hàm get_embeddings)
+    - Với mỗi khuôn mặt được phát hiện, so sánh với tất cả các document trong DB để tìm khuôn mặt khớp.
+    """
     try:
-        logger.info("🔍 Bắt đầu nhận diện khuôn mặt...")
-        embedding = get_face_system().get_embedding(image)
-        if embedding is None:
-            raise ValueError("Không thể tạo embedding từ khuôn mặt")
+        logger.info("🔍 Bắt đầu nhận diện nhiều khuôn mặt trong ảnh...")
 
-        # Lấy tất cả embeddings từ MongoDB
+        # Giả sử hệ thống có thể phát hiện nhiều khuôn mặt trong ảnh
+        face_embeddings = get_face_system().get_embeddings(image)  # Trả về danh sách các embedding (np.array)
+        if not face_embeddings:
+            raise ValueError("Không tìm thấy khuôn mặt nào trong ảnh")
+
+        # Lấy tất cả các khuôn mặt (document) từ MongoDB
         faces = await faces_collection.find().to_list(length=None)
         if not faces:
             raise ValueError("Không có dữ liệu khuôn mặt trong hệ thống")
 
-        min_distance = float("inf")
-        recognized_user = None
+        recognized_results = []
+        threshold = get_face_system().threshold
 
-        for face in faces:
-            stored_embedding = np.array(face["embeddings"], dtype=np.float32)
-            distance = np.linalg.norm(embedding - stored_embedding)
-            if distance < get_face_system().threshold and distance < min_distance:
-                min_distance = distance
-                recognized_user = face["userID"]
+        # Với mỗi embedding (từng khuôn mặt được phát hiện)
+        for embedding in face_embeddings:
+            min_distance = float("inf")
+            best_match = None
 
-        if recognized_user:
-            logger.info(f"✅ Nhận diện thành công: {recognized_user}")
+            # So sánh với từng document (mỗi document là 1 khuôn mặt đã đăng ký)
+            for face in faces:
+                stored_embedding = np.array(face["embedding"], dtype=np.float32)
+                distance = np.linalg.norm(embedding - stored_embedding)
+                if distance < threshold and distance < min_distance:
+                    min_distance = distance
+                    best_match = face
+
+            if best_match:
+                recognized_results.append({
+                    "userID": best_match["userID"],
+                    "name": best_match.get("name", "unknown"),
+                    "distance": float(min_distance)
+                })
+
+        if recognized_results:
+            logger.info(f"✅ Nhận diện thành công: {recognized_results}")
         else:
             logger.info("❌ Không tìm thấy khuôn mặt phù hợp")
-        await websocket.send_text(json.dumps({"type": "recognizeFace", "status": "success" if recognized_user else "fail", "userID": recognized_user}, ensure_ascii=False))
+
+        await websocket.send_text(json.dumps({
+            "type": "recognizeFace",
+            "status": "success" if recognized_results else "fail",
+            "recognizedUsers": recognized_results
+        }, ensure_ascii=False))
+
     except ValueError as e:
         await websocket.send_text(json.dumps({"type": "recognizeFace", "status": "fail", "message": str(e)}, ensure_ascii=False))
     except Exception as e:
         logger.error(f"❌ Lỗi nhận diện khuôn mặt: {e}")
-        await websocket.send_text(json.dumps({"type": "recognizeFace", "status": "fail", "message": "Nhận diện khuôn mặt thất bại", "messageFlow": "response"}, ensure_ascii=False))
+        await websocket.send_text(json.dumps({"type": "recognizeFace", "status": "fail", "message": "Nhận diện khuôn mặt thất bại"}, ensure_ascii=False))
     finally:
         gc.collect()
-
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
