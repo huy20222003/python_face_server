@@ -4,10 +4,10 @@ import os
 import tensorflow as tf
 import cv2
 from typing import Optional
-import mediapipe as mp
+from mtcnn.mtcnn import MTCNN  # Sử dụng mtcnn từ pip install mtcnn
 
 class FaceRecognitionSystem:
-    def __init__(self, model_path: str = "models/arcface_model.tflite", threshold: float = 0.5):
+    def __init__(self, model_path: str = "models/arcface_model.tflite", threshold: float = 0.8):
         """
         Khởi tạo hệ thống nhận diện khuôn mặt sử dụng mô hình TF Lite.
         Args:
@@ -22,29 +22,30 @@ class FaceRecognitionSystem:
         self.output_details = None
         self._setup_logging()
         self._load_model()
-        self.face_detector = mp.solutions.face_detection.FaceDetection(min_detection_confidence=0.5)
+        # Khởi tạo MTCNN thay vì MediaPipe
+        self.face_detector = MTCNN()
         
     def _detect_faces(self, image: np.ndarray) -> list:
         """
         Phát hiện tất cả các khuôn mặt trong ảnh và trả về danh sách các vùng chứa khuôn mặt.
         Mỗi khuôn mặt được cắt ra dưới dạng một numpy array.
         """
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        results = self.face_detector.process(image_rgb)
         faces = []
-        
-        if results.detections:
-            h, w, _ = image.shape
-            for detection in results.detections:
-                bbox = detection.location_data.relative_bounding_box
-                x = int(bbox.xmin * w)
-                y = int(bbox.ymin * h)
-                width = int(bbox.width * w)
-                height = int(bbox.height * h)
-                # Đảm bảo tọa độ không vượt ngoài biên ảnh
-                x, y = max(0, x), max(0, y)
-                face_img = image[y:y + height, x:x + width]
-                faces.append(face_img)
+        try:
+            # Chuyển ảnh sang không gian màu RGB vì MTCNN hoạt động tốt hơn với RGB
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            detections = self.face_detector.detect_faces(image_rgb)
+            
+            if detections:
+                for detection in detections:
+                    # detection['box'] trả về [x, y, width, height]
+                    x, y, width, height = detection['box']
+                    # Đảm bảo các chỉ số không âm
+                    x, y = max(0, x), max(0, y)
+                    face_img = image[y:y + height, x:x + width]
+                    faces.append(face_img)
+        except Exception as e:
+            self.logger.error(f"❌ Lỗi phát hiện khuôn mặt: {e}")
         return faces
 
     def _setup_logging(self) -> None:
@@ -74,6 +75,7 @@ class FaceRecognitionSystem:
         Tiền xử lý ảnh đầu vào trước khi đưa vào mô hình.
         """
         try:
+            # Nếu ảnh có 3 kênh, chuyển sang RGB (nếu chưa phải)
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) if image.shape[2] == 3 else image
             input_size = self.input_details[0]['shape'][1:3]  # Lấy kích thước đầu vào từ mô hình
             image = cv2.resize(image, tuple(input_size))

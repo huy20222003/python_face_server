@@ -50,7 +50,7 @@ def get_face_system():
     global face_system
     if face_system is None:
         logger.info("🟢 Khởi tạo hệ thống nhận diện khuôn mặt...")
-        face_system = FaceRecognitionSystem(model_path="models/arcface_model.tflite", threshold=0.6)
+        face_system = FaceRecognitionSystem(model_path="models/arcface_model.tflite", threshold=0.8)
         logger.info("✅ Hệ thống nhận diện khuôn mặt đã sẵn sàng")
     return face_system
 
