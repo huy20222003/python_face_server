@@ -1,96 +1,60 @@
 import numpy as np
 import logging
-import os
-import tensorflow as tf
 import cv2
-from typing import Optional
-from mtcnn.mtcnn import MTCNN  # Sử dụng mtcnn từ pip install mtcnn
+from typing import Optional, List
+from mtcnn import MTCNN
+from keras_facenet import FaceNet
+
+def euclidean_distance(embedding1: np.ndarray, embedding2: np.ndarray) -> float:
+    """Tính khoảng cách Euclidean giữa hai embeddings."""
+    return np.linalg.norm(embedding1 - embedding2)
 
 class FaceRecognitionSystem:
-    def __init__(self, model_path: str = "models/arcface_model.tflite", threshold: float = 0.8):
+    def __init__(self, threshold: float = 0.8):
         """
-        Khởi tạo hệ thống nhận diện khuôn mặt sử dụng mô hình TF Lite.
+        Khởi tạo hệ thống nhận diện khuôn mặt sử dụng FaceNet.
         Args:
-            model_path: Đường dẫn lưu mô hình TF Lite.
-            threshold: Ngưỡng nhận diện.
+            threshold: Ngưỡng nhận diện (Euclidean distance).
         """
         self.threshold = threshold
-        self.model_path = model_path
-        self.model = None  # Bộ nhớ đệm cho mô hình TF Lite
-        self.interpreter = None
-        self.input_details = None
-        self.output_details = None
         self._setup_logging()
-        self._load_model()
-        # Khởi tạo MTCNN thay vì MediaPipe
+        self.logger.info("🔄 Đang tải mô hình FaceNet...")
+        self.facenet = FaceNet()
+        self.logger.info("✅ Mô hình FaceNet đã tải thành công.")
         self.face_detector = MTCNN()
-        
-    def _detect_faces(self, image: np.ndarray) -> list:
-        """
-        Phát hiện tất cả các khuôn mặt trong ảnh và trả về danh sách các vùng chứa khuôn mặt.
-        Mỗi khuôn mặt được cắt ra dưới dạng một numpy array.
-        """
-        faces = []
-        try:
-            # Chuyển ảnh sang không gian màu RGB vì MTCNN hoạt động tốt hơn với RGB
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            detections = self.face_detector.detect_faces(image_rgb)
-            
-            if detections:
-                for detection in detections:
-                    # detection['box'] trả về [x, y, width, height]
-                    x, y, width, height = detection['box']
-                    # Đảm bảo các chỉ số không âm
-                    x, y = max(0, x), max(0, y)
-                    face_img = image[y:y + height, x:x + width]
-                    faces.append(face_img)
-        except Exception as e:
-            self.logger.error(f"❌ Lỗi phát hiện khuôn mặt: {e}")
-        return faces
 
     def _setup_logging(self) -> None:
         """Cấu hình logging."""
         logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
         self.logger = logging.getLogger(__name__)
 
-    def _load_model(self) -> None:
-        """Tải mô hình TF Lite vào bộ nhớ nếu chưa được tải."""
-        if self.model is None:
-            if not os.path.exists(self.model_path):
-                self.logger.error(f"❌ Không tìm thấy mô hình tại {self.model_path}.")
-                raise FileNotFoundError("Mô hình không tồn tại!")
-            try:
-                self.logger.info("🔄 Đang tải mô hình TensorFlow Lite vào bộ nhớ...")
-                self.interpreter = tf.lite.Interpreter(model_path=self.model_path)
-                self.interpreter.allocate_tensors()
-                self.input_details = self.interpreter.get_input_details()
-                self.output_details = self.interpreter.get_output_details()
-                self.logger.info("✅ Mô hình TensorFlow Lite đã được tải thành công.")
-            except Exception as e:
-                self.logger.error(f"❌ Lỗi tải mô hình: {e}")
-                raise
+    def _detect_faces(self, image: np.ndarray) -> List[np.ndarray]:
+        """Phát hiện khuôn mặt trong ảnh và trích xuất vùng mặt."""
+        faces = []
+        try:
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            detections = self.face_detector.detect_faces(image_rgb)
+            for detection in detections:
+                x, y, width, height = detection['box']
+                x, y = max(0, x), max(0, y)
+                face_img = image_rgb[y:y + height, x:x + width]
+                faces.append(face_img)
+        except Exception as e:
+            self.logger.error(f"❌ Lỗi phát hiện khuôn mặt: {e}")
+        return faces
 
     def _preprocess_image(self, image: np.ndarray) -> Optional[np.ndarray]:
-        """
-        Tiền xử lý ảnh đầu vào trước khi đưa vào mô hình.
-        """
+        """Tiền xử lý ảnh để phù hợp với đầu vào của FaceNet."""
         try:
-            # Nếu ảnh có 3 kênh, chuyển sang RGB (nếu chưa phải)
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) if image.shape[2] == 3 else image
-            input_size = self.input_details[0]['shape'][1:3]  # Lấy kích thước đầu vào từ mô hình
-            image = cv2.resize(image, tuple(input_size))
-            image = image.astype(np.float32) / 255.0  # Chuẩn hóa về khoảng [0,1]
+            image = cv2.resize(image, (160, 160))
+            image = image.astype(np.float32) / 255.0
             return np.expand_dims(image, axis=0)
         except Exception as e:
             self.logger.error(f"❌ Lỗi xử lý ảnh: {e}")
             return None
 
-    def get_embeddings(self, image: np.ndarray) -> Optional[list]:
-        """
-        Trích xuất embedding từ tất cả các khuôn mặt được phát hiện trong ảnh.
-        Trả về danh sách các embedding đã được chuẩn hóa.
-        Nếu không phát hiện được khuôn mặt nào, trả về None.
-        """
+    def get_embeddings(self, image: np.ndarray) -> Optional[List[np.ndarray]]:
+        """Trích xuất embedding từ ảnh chứa khuôn mặt."""
         face_images = self._detect_faces(image)
         if not face_images:
             self.logger.warning("⚠️ Không tìm thấy khuôn mặt nào trong ảnh.")
@@ -102,27 +66,29 @@ class FaceRecognitionSystem:
             if preprocessed_image is None:
                 continue
             try:
-                self.interpreter.set_tensor(self.input_details[0]['index'], preprocessed_image)
-                self.interpreter.invoke()
-                embedding = self.interpreter.get_tensor(self.output_details[0]['index'])[0]
-                # Chuẩn hóa embedding và thêm vào danh sách
-                normalized_embedding = embedding / np.linalg.norm(embedding)
-                embeddings.append(normalized_embedding)
+                embedding = self.facenet.embeddings(preprocessed_image)[0]
+                embeddings.append(embedding)  # Không chuẩn hóa
             except Exception as e:
                 self.logger.error(f"❌ Lỗi trích xuất embedding: {e}")
                 continue
 
-        if not embeddings:
-            return None
-        return embeddings
+        return embeddings if embeddings else None
 
-    def compare_faces(self, embedding1: Optional[np.ndarray], embedding2: Optional[np.ndarray]) -> bool:
-        """So sánh hai embeddings để xác thực khuôn mặt."""
-        try:
-            if embedding1 is None or embedding2 is None:
-                return False
-            similarity = np.dot(embedding1, embedding2)
-            return similarity > self.threshold
-        except Exception as e:
-            self.logger.error(f"❌ Lỗi so sánh khuôn mặt: {e}")
-            return False
+    def recognize_face(self, face_embedding: np.ndarray, database: List[dict]) -> Optional[dict]:
+        """
+        So sánh embedding với cơ sở dữ liệu để tìm khuôn mặt phù hợp nhất.
+        Args:
+            face_embedding: Embedding của khuôn mặt cần nhận diện.
+            database: Danh sách các khuôn mặt đã lưu trong MongoDB.
+        Returns:
+            Thông tin của khuôn mặt nhận diện được (nếu có) hoặc None.
+        """
+        best_match = None
+        min_distance = float("inf")
+        for face in database:
+            stored_embedding = np.array(face["embedding"], dtype=np.float32)
+            distance = euclidean_distance(face_embedding, stored_embedding)
+            if distance < self.threshold and distance < min_distance:
+                min_distance = distance
+                best_match = face
+        return best_match
