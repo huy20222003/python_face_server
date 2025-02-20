@@ -28,23 +28,42 @@ class FaceRecognitionSystem:
         logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
         self.logger = logging.getLogger(__name__)
 
-    def _detect_faces(self, image: np.ndarray) -> List[np.ndarray]:
+    def _detect_faces(self, image: Optional[np.ndarray]) -> List[np.ndarray]:
         """Phát hiện khuôn mặt trong ảnh và trích xuất vùng mặt."""
         faces = []
+        if image is None:
+            self.logger.error("❌ Ảnh đầu vào bị lỗi hoặc None.")
+            return faces
+        
         try:
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             detections = self.face_detector.detect_faces(image_rgb)
+            if not detections:
+                self.logger.warning("⚠️ Không tìm thấy khuôn mặt nào trong ảnh.")
+                return faces
+
             for detection in detections:
                 x, y, width, height = detection['box']
                 x, y = max(0, x), max(0, y)
                 face_img = image_rgb[y:y + height, x:x + width]
+
+                # Kiểm tra nếu ảnh khuôn mặt bị lỗi
+                if face_img is None or face_img.size == 0:
+                    self.logger.warning("⚠️ Khuôn mặt trích xuất bị lỗi hoặc rỗng.")
+                    continue
+
                 faces.append(face_img)
+
         except Exception as e:
             self.logger.error(f"❌ Lỗi phát hiện khuôn mặt: {e}")
         return faces
 
-    def _preprocess_image(self, image: np.ndarray) -> Optional[np.ndarray]:
+    def _preprocess_image(self, image: Optional[np.ndarray]) -> Optional[np.ndarray]:
         """Tiền xử lý ảnh để phù hợp với đầu vào của FaceNet."""
+        if image is None or image.size == 0:
+            self.logger.error("❌ Ảnh đầu vào để xử lý bị lỗi hoặc rỗng.")
+            return None
+
         try:
             image = cv2.resize(image, (160, 160))
             image = image.astype(np.float32) / 255.0
@@ -53,11 +72,14 @@ class FaceRecognitionSystem:
             self.logger.error(f"❌ Lỗi xử lý ảnh: {e}")
             return None
 
-    def get_embeddings(self, image: np.ndarray) -> Optional[List[np.ndarray]]:
+    def get_embeddings(self, image: Optional[np.ndarray]) -> Optional[List[np.ndarray]]:
         """Trích xuất embedding từ ảnh chứa khuôn mặt."""
+        if image is None:
+            self.logger.error("❌ Ảnh đầu vào bị lỗi hoặc None.")
+            return None
+
         face_images = self._detect_faces(image)
         if not face_images:
-            self.logger.warning("⚠️ Không tìm thấy khuôn mặt nào trong ảnh.")
             return None
 
         embeddings = []
@@ -83,6 +105,10 @@ class FaceRecognitionSystem:
         Returns:
             Thông tin của khuôn mặt nhận diện được (nếu có) hoặc None.
         """
+        if face_embedding is None:
+            self.logger.error("❌ Embedding đầu vào bị lỗi hoặc None.")
+            return None
+
         best_match = None
         min_distance = float("inf")
         for face in database:
