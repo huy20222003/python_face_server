@@ -11,4 +11,4 @@ motor==3.2.0
 tensorflow_hub==0.14.0
 pymongo==4.4.0
 mtcnn==0.1.0
-keras-facenet==0.3.2
+# keras-facenet==0.3.2
