@@ -46,13 +46,16 @@ app.add_middleware(
 # Lazy Loading hệ thống nhận diện khuôn mặt
 face_system = None
 
+
 def get_face_system():
     global face_system
     if face_system is None:
         logger.info("🟢 Khởi tạo hệ thống nhận diện khuôn mặt...")
-        face_system = FaceRecognitionSystem(model_path="models/arcface_model.tflite", threshold=0.8)
+        face_system = FaceRecognitionSystem(
+            model_path="models/arcface_model.tflite", threshold=0.8)
         logger.info("✅ Hệ thống nhận diện khuôn mặt đã sẵn sàng")
     return face_system
+
 
 # Kết nối MongoDB
 try:
@@ -66,13 +69,17 @@ except Exception as e:
     raise
 
 # Các endpoint API cơ bản
+
+
 @app.head("/")
 async def reject_head():
     return {}
 
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to the Face Recognition API!"}
+
 
 @app.get("/health")
 async def health_check():
@@ -84,6 +91,7 @@ async def health_check():
         logger.error(f"Health check failed: {str(e)}")
         raise HTTPException(status_code=503, detail="Hệ thống không khả dụng")
 
+
 def process_binary_image(binary_data: bytes) -> np.ndarray:
     """Xử lý dữ liệu ảnh nhị phân thành numpy array."""
     try:
@@ -94,6 +102,8 @@ def process_binary_image(binary_data: bytes) -> np.ndarray:
         return None
 
 # Vẫn giữ hàm decode_image để hỗ trợ tương thích ngược (nếu cần)
+
+
 def decode_image(image_data: str) -> np.ndarray:
     """Giải mã dữ liệu ảnh từ base64 sang numpy array."""
     try:
@@ -105,14 +115,18 @@ def decode_image(image_data: str) -> np.ndarray:
         return None
 
 # Lưu trữ thông tin phiên WebSocket
+
+
 class WebSocketSession:
     def __init__(self):
         self.current_request = None
         self.user_id = None
         self.request_type = None
 
+
 # Từ điển lưu trữ phiên cho mỗi kết nối WebSocket
 websocket_sessions = {}
+
 
 async def handle_add_face(websocket: WebSocket, user_id: str, image: np.ndarray):
     """Xử lý yêu cầu đăng ký khuôn mặt."""
@@ -140,33 +154,40 @@ async def handle_add_face(websocket: WebSocket, user_id: str, image: np.ndarray)
 
         logger.info("✅ Đăng ký khuôn mặt thành công")
         await websocket.send_text(json.dumps({
-            "type": "addFace", 
+            "type": "addFace",
             "messageFlow": "response",
-            "status": "success", 
-            "message": "Đăng ký khuôn mặt thành công"
+            "status": "success",
+            "message": "Đăng ký khuôn mặt thành công",
+            "userID": user_id
         }, ensure_ascii=False))
-    
+
     except ValueError as e:
         await websocket.send_text(json.dumps({
-            "type": "addFace", 
+            "type": "addFace",
             "messageFlow": "response",
-            "status": "fail", 
-            "message": str(e)
+            "status": "fail",
+            "message": str(e),
+            "userID": user_id
         }, ensure_ascii=False))
     except Exception as e:
         logger.error(f"❌ Lỗi đăng ký khuôn mặt: {e}")
         await websocket.send_text(json.dumps({
-            "type": "addFace", 
+            "type": "addFace",
             "messageFlow": "response",
-            "status": "fail", 
-            "message": "Đăng ký khuôn mặt thất bại"
+            "status": "fail",
+            "message": "Đăng ký khuôn mặt thất bại",
+            "userID": user_id
         }, ensure_ascii=False))
     finally:
         gc.collect()
 
-async def handle_recognize_face(websocket: WebSocket, image: np.ndarray):
+
+async def handle_recognize_face(websocket: WebSocket, user_id: str, image: np.ndarray):
     """Xử lý yêu cầu nhận diện khuôn mặt."""
     try:
+        if not user_id:
+            raise ValueError("Thiếu userID")
+        
         logger.info("🔍 Bắt đầu nhận diện nhiều khuôn mặt trong ảnh...")
 
         # Giả sử hệ thống có thể phát hiện nhiều khuôn mặt trong ảnh
@@ -211,7 +232,8 @@ async def handle_recognize_face(websocket: WebSocket, image: np.ndarray):
             "type": "recognizeFace",
             "messageFlow": "response",
             "status": "success" if recognized_results else "fail",
-            "recognizedUsers": recognized_results
+            "recognizedUsers": recognized_results,
+            "userID": user_id
         }, ensure_ascii=False))
 
     except ValueError as e:
@@ -219,7 +241,8 @@ async def handle_recognize_face(websocket: WebSocket, image: np.ndarray):
             "type": "recognizeFace", 
             "messageFlow": "response",
             "status": "fail", 
-            "message": str(e)
+            "message": str(e),
+            "userID": user_id
         }, ensure_ascii=False))
     except Exception as e:
         logger.error(f"❌ Lỗi nhận diện khuôn mặt: {e}")
@@ -227,7 +250,8 @@ async def handle_recognize_face(websocket: WebSocket, image: np.ndarray):
             "type": "recognizeFace", 
             "messageFlow": "response",
             "status": "fail", 
-            "message": "Nhận diện khuôn mặt thất bại"
+            "message": "Nhận diện khuôn mặt thất bại",
+            "userID": user_id
         }, ensure_ascii=False))
     finally:
         gc.collect()
@@ -266,7 +290,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         if request_type == "addFace":
                             await handle_add_face(websocket, session.user_id, image)
                         elif request_type == "recognizeFace":
-                            await handle_recognize_face(websocket, image)
+                            await handle_recognize_face(websocket, session.user_id, image)
                     else:
                         # Nếu không có ảnh, đợi tin nhắn nhị phân tiếp theo
                         logger.info(f"⏳ Đang đợi dữ liệu ảnh nhị phân cho yêu cầu {request_type}...")
@@ -290,7 +314,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         if session.request_type == "addFace":
                             await handle_add_face(websocket, session.user_id, image)
                         elif session.request_type == "recognizeFace":
-                            await handle_recognize_face(websocket, image)
+                            await handle_recognize_face(websocket, session.user_id, image)
                     else:
                         await websocket.send_text(json.dumps({
                             "type": session.request_type,
