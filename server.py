@@ -229,7 +229,7 @@ async def handle_recognize_face(websocket: WebSocket, user_id: str, image: np.nd
             if best_match:
                 recognized_results.append({
                     "face_id": face_id_counter,  # Thêm face_id
-                    "userID": best_match["userID"],
+                    "userID": str(best_match["_id"]),
                     "name": best_match.get("name", "unknown"),
                     "distance": float(min_distance)
                 })
