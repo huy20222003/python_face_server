@@ -219,6 +219,7 @@ async def handle_recognize_face(websocket: WebSocket, user_id: str, image: np.nd
 
             # So sánh với từng document
             for face in faces:
+                face["_id"] = str(face["_id"])
                 stored_embedding = np.array(face["embedding"], dtype=np.float32)
                 distance = np.linalg.norm(embedding - stored_embedding)
                 if distance < threshold and distance < min_distance:
