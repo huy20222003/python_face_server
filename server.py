@@ -12,6 +12,7 @@ import tensorflow as tf
 import os
 from face_recognition import FaceRecognitionSystem
 import base64
+from bson import ObjectId
 
 # Giữ các thiết lập môi trường ban đầu
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
@@ -134,6 +135,13 @@ async def handle_add_face(websocket: WebSocket, user_id: str, image: np.ndarray)
         if not user_id:
             raise ValueError("Thiếu userID")
 
+         # Convert string userID to ObjectId
+        try:
+            user_id_object = ObjectId(user_id)
+        except Exception:
+            raise ValueError("UserID không hợp lệ")
+
+
         logger.info(f"👤 Đăng ký khuôn mặt mới cho userID: {user_id}")
 
         # Lấy danh sách các embedding từ ảnh
@@ -144,7 +152,7 @@ async def handle_add_face(websocket: WebSocket, user_id: str, image: np.ndarray)
         # Với mỗi embedding được phát hiện, tạo một document riêng
         for emb in embeddings:
             face_document = {
-                "userID": user_id,
+                "userID": user_id_object,
                 "name": "unknown",
                 "embedding": emb.tolist(),
                 "createdAt": datetime.now(timezone.utc),
@@ -202,6 +210,7 @@ async def handle_recognize_face(websocket: WebSocket, user_id: str, image: np.nd
 
         recognized_results = []
         threshold = get_face_system().threshold
+        face_id_counter = 1  # Biến đếm để gán face_id
 
         # Với mỗi embedding (từng khuôn mặt được phát hiện)
         for embedding in face_embeddings:
@@ -218,10 +227,12 @@ async def handle_recognize_face(websocket: WebSocket, user_id: str, image: np.nd
 
             if best_match:
                 recognized_results.append({
+                    "face_id": face_id_counter,  # Thêm face_id
                     "userID": best_match["userID"],
                     "name": best_match.get("name", "unknown"),
                     "distance": float(min_distance)
                 })
+                face_id_counter += 1  # Tăng số thứ tự cho khuôn mặt tiếp theo
 
         if recognized_results:
             logger.info(f"✅ Nhận diện thành công: {recognized_results}")
